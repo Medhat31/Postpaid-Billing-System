@@ -1,0 +1,6 @@
+ven build folder
+target/
+
+# NetBeans specific files
+nbactions.xml
+nbproject/
