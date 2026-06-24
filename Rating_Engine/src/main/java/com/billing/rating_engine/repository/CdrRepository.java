@@ -6,6 +6,7 @@ import org.jooq.Result;
 import static org.jooq.impl.DSL.*;
 
 public class CdrRepository implements ICdrRepository {
+
     @Override
     public Result<Record> fetchUnratedCdrs(DSLContext ctx, int batchSize) {
         return ctx.select()
@@ -16,10 +17,11 @@ public class CdrRepository implements ICdrRepository {
     }
 
     @Override
-    public void markAsRated(DSLContext ctx, long cdrId) {
+    public void updateCdrAfterRating(DSLContext ctx, long cdrId, double chargedAmount) {
         ctx.update(table("cdr"))
-           .set(field("is_rated"), true)
-           .where(field("cdr_id").eq(cdrId))
-           .execute();
+                .set(field("is_rated"), true)
+                .set(field("charged_amount"), chargedAmount)
+                .where(field("cdr_id").eq(cdrId))
+                .execute();
     }
 }
