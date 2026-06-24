@@ -20,7 +20,10 @@ public class DataProcessor implements ICdrProcessor {
        long cdrId = cdr.get("cdr_id", Long.class);
         int contractId = cdr.get("contract_id", Integer.class);
         short serviceType = cdr.get("service_type", Short.class); 
-        double quantity = cdr.get("quantity", Double.class); 
+        
+       double quantityBytes = cdr.get("quantity", Double.class);
+       double quantityMB = quantityBytes / (1024.0 * 1024.0);
+       
         LocalDateTime startTime = cdr.get("start_time", LocalDateTime.class);
         
         Integer externalFeePiasters = cdr.get("external_fee_piasters", Integer.class);
@@ -36,15 +39,15 @@ public class DataProcessor implements ICdrProcessor {
             int balanceId = wallet.get("balance_id", Integer.class);
             double remaining = wallet.get("remaining", Double.class);
 
-            if (remaining >= quantity) {
-                walletRepo.updateWalletBalance(ctx, balanceId, quantity, remaining - quantity);
+            if (remaining >= quantityMB) {
+                walletRepo.updateWalletBalance(ctx, balanceId, quantityMB, remaining - quantityMB);
             } else {
-                double outOfQuota = quantity - remaining;
+                double outOfQuota = quantityMB - remaining;
                 walletRepo.updateWalletBalance(ctx, balanceId, remaining, 0.0);
                 chargedAmount = outOfQuota * ratePerUnit;
             }
         } else {
-            chargedAmount = quantity * ratePerUnit;
+            chargedAmount = quantityMB * ratePerUnit;
         }
 
         chargedAmount += externalFeeEgp;
