@@ -6,5 +6,5 @@ import org.jooq.Result;
 
 public interface ICdrRepository {
     Result<Record> fetchUnratedCdrs(DSLContext ctx, int batchSize);
-    void markAsRated(DSLContext ctx, long cdrId);
+    void updateCdrAfterRating(DSLContext ctx, long cdrId, double chargedAmount);
 }
