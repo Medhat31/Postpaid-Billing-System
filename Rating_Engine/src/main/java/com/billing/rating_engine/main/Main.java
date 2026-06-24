@@ -1,34 +1,21 @@
 package com.billing.rating_engine.main;
 
-// Import your newly created root packages
-import com.billing.rating_engine.repository.*;
-import com.billing.rating_engine.engine.IRatingEngine;
-import com.billing.rating_engine.engine.RatingEngine;
 import com.billing.rating_engine.engine.PollingScheduler;
-import com.billing.rating_engine.config.DatabaseConfig;
+import com.billing.rating_engine.engine.RatingEngine;
 
 public class Main {
     public static void main(String[] args) {
-        System.out.println("Starting BSCS Batch Production Processing Engine Core...");
+        System.out.println("Initializing Postpaid Billing System...");
         
-        // 1. Initialize Core Structural Repositories
-        ICdrRepository cdrRepo = new CdrRepository();
-        IWalletRepository walletRepo = new WalletRepository();
-        IRatedCdrRepository ratedRepo = new RatedCdrRepository();
-
-        // 2. Inject repositories into the Rating Engine Implementation
-        IRatingEngine engine = new RatingEngine(cdrRepo, walletRepo, ratedRepo);
-        
-        // 3. Pass the engine to the background scheduler loop
+        RatingEngine engine = new RatingEngine();
         PollingScheduler scheduler = new PollingScheduler(engine);
-        Thread engineThread = new Thread(scheduler);
         
-        // 4. Setup a simple JVM graceful shutdown hook to clean up HikariCP
+        scheduler.start();
+        
+        // Add a shutdown hook to cleanly close database connections and threads if the app is killed
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            DatabaseConfig.shutdown();
+            System.out.println("System shutdown initiated...");
+            scheduler.stop();
         }));
-
-        // 5. Fire up the background thread
-        engineThread.start();
     }
 }

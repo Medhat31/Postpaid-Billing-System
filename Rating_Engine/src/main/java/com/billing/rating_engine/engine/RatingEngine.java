@@ -26,12 +26,13 @@ public class RatingEngine implements IRatingEngine {
 
     @Override
     public void startRatingCycle() {
-        try (DSLContext ctx = DatabaseConfig.getDSLContext()) {
-            // Fetch up to 1000 unrated records at a time
-            Result<Record> unratedCdrs = cdrRepo.fetchUnratedCdrs(ctx, 1000); 
+        try {
+            
+            DSLContext ctx = DatabaseConfig.getDSLContext();
+            Result<Record> unratedCdrs = cdrRepo.fetchUnratedCdrs(ctx, 100); 
 
             if (unratedCdrs.isEmpty()) {
-                return; // Nothing to process
+                return;
             }
 
             System.out.println("Processing batch of " + unratedCdrs.size() + " CDRs...");
