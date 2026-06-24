@@ -16,10 +16,16 @@ public class VoiceSMSProcessor implements ICdrProcessor {
         this.cdrRepo = cdrRepo;
     }
     
-    private double calculateZoneRate(String dialB, double baseRate) {
-        if (dialB.startsWith("00") && !dialB.startsWith("0020")) {
-            return baseRate * 50.0; // International
-        } else if (dialB.startsWith("012") || dialB.startsWith("002012")) {
+    private double calculateZoneRate(String dialA, String dialB, double baseRate) {
+        
+        if (dialA == null || dialB == null || dialA.length() < 4 || dialB.length() < 4) {
+            return baseRate * 1.5; // Default to Off-Net for weird/short numbers
+        }
+        
+        String prefixA = dialA.substring(0, 4);
+        String prefixB = dialB.substring(0, 4);
+
+        if (prefixA.equals(prefixB)) {
             return baseRate * 1.0;  // On-Net
         } else {
             return baseRate * 1.5;  // Off-Net
@@ -33,13 +39,16 @@ public class VoiceSMSProcessor implements ICdrProcessor {
         short serviceType = cdr.get("service_type", Short.class);
         double quantity = cdr.get("quantity", Double.class);
         LocalDateTime startTime = cdr.get("start_time", LocalDateTime.class);
+        String dialA = cdr.get("dial_a", String.class);
         String dialB = cdr.get("dial_b", String.class);
+        Integer externalFeePiasters = cdr.get("external_fee_piasters", Integer.class);
+        double externalFeeEgp = (externalFeePiasters != null ? externalFeePiasters : 0) / 100.0;
 
         Record wallet = walletRepo.fetchActiveWallet(ctx, contractId, startTime, serviceType);
         Record pricing = walletRepo.fetchPricingMatrix(ctx, contractId, serviceType);
 
         double baseRate = pricing != null ? pricing.get("rate_per_unit", Double.class) : 0.0;
-        double finalRate = calculateZoneRate(dialB, baseRate);
+        double finalRate = calculateZoneRate(dialA, dialB, baseRate);
         double chargedAmount = 0.0;
 
         if (wallet != null) {
@@ -59,8 +68,8 @@ public class VoiceSMSProcessor implements ICdrProcessor {
             // Out-of-Quota: No active wallet, charge pure cash
             chargedAmount = quantity * finalRate;
         }
-
-        // Apply In-Place Rating to the CDR table
+        
+        chargedAmount += externalFeeEgp;
         cdrRepo.updateCdrAfterRating(ctx, cdrId, chargedAmount);
     }
     
