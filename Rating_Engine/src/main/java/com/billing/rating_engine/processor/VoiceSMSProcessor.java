@@ -1,58 +1,67 @@
 package com.billing.rating_engine.processor;
 
-import com.billing.rating_engine.repository.IRatedCdrRepository;
+import com.billing.rating_engine.repository.ICdrRepository;
 import com.billing.rating_engine.repository.IWalletRepository;
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import java.time.LocalDateTime;
 
-/**
- *
- * @author mfathy
- */
 public class VoiceSMSProcessor implements ICdrProcessor {
     
     private final IWalletRepository walletRepo;
-    private final IRatedCdrRepository ratedRepo;
+    private final ICdrRepository cdrRepo;
 
-    public VoiceSMSProcessor(IWalletRepository walletRepo, IRatedCdrRepository ratedRepo) {
+    public VoiceSMSProcessor(IWalletRepository walletRepo, ICdrRepository cdrRepo) {
         this.walletRepo = walletRepo;
-        this.ratedRepo = ratedRepo;
+        this.cdrRepo = cdrRepo;
+    }
+    
+    private double calculateZoneRate(String dialB, double baseRate) {
+        if (dialB.startsWith("00") && !dialB.startsWith("0020")) {
+            return baseRate * 50.0; // International
+        } else if (dialB.startsWith("012") || dialB.startsWith("002012")) {
+            return baseRate * 1.0;  // On-Net
+        } else {
+            return baseRate * 1.5;  // Off-Net
+        }
     }
 
     @Override
-    public void process(DSLContext ctx, Record cdr, Record pricing, Record wallet) {
-        double quantity = cdr.get("quantity", Double.class);
+    public void process(DSLContext ctx, Record cdr) {
+       long cdrId = cdr.get("cdr_id", Long.class);
         int contractId = cdr.get("contract_id", Integer.class);
-        long cdrId = cdr.get("cdr_id", Long.class);
         short serviceType = cdr.get("service_type", Short.class);
-        
-        int packageId = pricing.get("package_id", Integer.class);
-        double ratePerUnit = pricing.get("rate_per_unit", Double.class);
+        double quantity = cdr.get("quantity", Double.class);
+        LocalDateTime startTime = cdr.get("start_time", LocalDateTime.class);
+        String dialB = cdr.get("dial_b", String.class);
 
-        double fuConsumed = 0;
-        double billableUnits = quantity;
-        double chargedAmount = 0;
+        Record wallet = walletRepo.fetchActiveWallet(ctx, contractId, startTime, serviceType);
+        Record pricing = walletRepo.fetchPricingMatrix(ctx, contractId, serviceType);
+
+        double baseRate = pricing != null ? pricing.get("rate_per_unit", Double.class) : 0.0;
+        double finalRate = calculateZoneRate(dialB, baseRate);
+        double chargedAmount = 0.0;
 
         if (wallet != null) {
-            double remaining = wallet.get("remaining", Double.class);
             int balanceId = wallet.get("balance_id", Integer.class);
+            double remaining = wallet.get("remaining", Double.class);
 
             if (remaining >= quantity) {
-                fuConsumed = quantity;
-                billableUnits = 0;
+                // In-Quota: Deduct from balance, no cash charged
                 walletRepo.updateWalletBalance(ctx, balanceId, quantity, remaining - quantity);
             } else {
-                fuConsumed = remaining;
-                billableUnits = quantity - remaining;
+                // Mid-Session: Drain wallet, charge cash for the rest
+                double outOfQuota = quantity - remaining;
                 walletRepo.updateWalletBalance(ctx, balanceId, remaining, 0.0);
+                chargedAmount = outOfQuota * finalRate;
             }
+        } else {
+            // Out-of-Quota: No active wallet, charge pure cash
+            chargedAmount = quantity * finalRate;
         }
 
-        if (billableUnits > 0) {
-            chargedAmount = billableUnits * ratePerUnit;
-        }
-
-        ratedRepo.insertRatedRecord(ctx, cdrId, contractId, packageId, serviceType, fuConsumed, billableUnits, chargedAmount);
+        // Apply In-Place Rating to the CDR table
+        cdrRepo.updateCdrAfterRating(ctx, cdrId, chargedAmount);
     }
     
 }
