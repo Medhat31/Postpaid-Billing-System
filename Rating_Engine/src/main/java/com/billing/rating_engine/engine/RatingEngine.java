@@ -1,61 +1,55 @@
 package com.billing.rating_engine.engine;
 
-import com.billing.rating_engine.processor.ICdrProcessor;
+import com.billing.rating_engine.config.DatabaseConfig;
 import com.billing.rating_engine.processor.DataProcessor;
+import com.billing.rating_engine.processor.ICdrProcessor;
 import com.billing.rating_engine.processor.VoiceSMSProcessor;
-import com.billing.rating_engine.repository.*;
+import com.billing.rating_engine.repository.CdrRepository;
+import com.billing.rating_engine.repository.ICdrRepository;
+import com.billing.rating_engine.repository.IWalletRepository;
+import com.billing.rating_engine.repository.WalletRepository;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
-/**
- *
- * @author mfathy
- */
 public class RatingEngine implements IRatingEngine {
     private final ICdrRepository cdrRepo;
-    private final IWalletRepository walletRepo;
-    private final Map<Short, ICdrProcessor> processors = new HashMap<>();
-    
-    public RatingEngine(ICdrRepository cdrRepo, IWalletRepository walletRepo, IRatedCdrRepository ratedRepo) {
-        this.cdrRepo = cdrRepo;
-        this.walletRepo = walletRepo;
+    private final ICdrProcessor voiceSmsProcessor;
+    private final ICdrProcessor dataProcessor;
 
-        ICdrProcessor voiceSms = new VoiceSMSProcessor(walletRepo, ratedRepo);
-        this.processors.put((short) 1, voiceSms); 
-        this.processors.put((short) 2, voiceSms); 
-        this.processors.put((short) 3, new DataProcessor(walletRepo, ratedRepo)); 
+    public RatingEngine() {
+        this.cdrRepo = new CdrRepository();
+        IWalletRepository walletRepo = new WalletRepository();
+        this.voiceSmsProcessor = new VoiceSMSProcessor(walletRepo, cdrRepo);
+        this.dataProcessor = new DataProcessor(walletRepo, cdrRepo);
     }
-    
+
     @Override
-    public void processNextBatch(DSLContext mainCtx) {
-        Result<Record> batch = cdrRepo.fetchUnratedCdrs(mainCtx, 100);
-        if (batch.isEmpty()) return;
+    public void startRatingCycle() {
+        try (DSLContext ctx = DatabaseConfig.getDSLContext()) {
+            // Fetch up to 1000 unrated records at a time
+            Result<Record> unratedCdrs = cdrRepo.fetchUnratedCdrs(ctx, 1000); 
 
-        mainCtx.transaction(configuration -> {
-            DSLContext tx = org.jooq.impl.DSL.using(configuration);
+            if (unratedCdrs.isEmpty()) {
+                return; // Nothing to process
+            }
 
-            for (Record cdr : batch) {
-                int contractId = cdr.get("contract_id", Integer.class);
+            System.out.println("Processing batch of " + unratedCdrs.size() + " CDRs...");
+
+            for (Record cdr : unratedCdrs) {
                 short serviceType = cdr.get("service_type", Short.class);
-                LocalDateTime startTime = cdr.get("start_time", LocalDateTime.class);
-
-                Record pricing = walletRepo.fetchPricingMatrix(tx, contractId, serviceType);
-                if (pricing == null) continue; 
-
-                Record wallet = walletRepo.fetchActiveWallet(tx, contractId, startTime, serviceType);
-                ICdrProcessor processor = processors.get(serviceType);
-
-                if (processor != null) {
-                    processor.process(tx, cdr, pricing, wallet);
-                    cdrRepo.markAsRated(tx, cdr.get("cdr_id", Long.class));
+                try {
+                    if (serviceType == 1 || serviceType == 2) {
+                        voiceSmsProcessor.process(ctx, cdr);
+                    } else if (serviceType == 3) {
+                        dataProcessor.process(ctx, cdr);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Failed to rate CDR ID: " + cdr.get("cdr_id") + " - " + e.getMessage());
                 }
             }
-        });
-        System.out.println("Processed batch run for " + batch.size() + " unrated CDR records.");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-    
 }
