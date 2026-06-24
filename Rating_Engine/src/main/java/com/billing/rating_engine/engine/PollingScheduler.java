@@ -1,33 +1,23 @@
 package com.billing.rating_engine.engine;
 
-import com.billing.rating_engine.config.DatabaseConfig;
-import org.jooq.DSLContext;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-/**
- *
- * @author mfathy
- */
-public class PollingScheduler implements Runnable {
-    private final IRatingEngine engine;
-    private boolean running = true;
+public class PollingScheduler {
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final IRatingEngine ratingEngine;
 
-    public PollingScheduler(IRatingEngine engine) {
-        this.engine = engine;
+    public PollingScheduler(IRatingEngine ratingEngine) {
+        this.ratingEngine = ratingEngine;
     }
 
-    @Override
-    public void run() {
-        DSLContext ctx = DatabaseConfig.getDSLContext();
-        while (running) {
-            try {
-                engine.processNextBatch(ctx);
-                Thread.sleep(2000); 
-            } catch (InterruptedException e) {
-                running = false;
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                System.err.println("Database polling iteration error: " + e.getMessage());
-            }
-        }
+    public void start() {
+        // Executes the rating cycle every 5 seconds
+        scheduler.scheduleAtFixedRate(ratingEngine::startRatingCycle, 0, 5, TimeUnit.SECONDS);
+    }
+
+    public void stop() {
+        scheduler.shutdown();
     }
 }
