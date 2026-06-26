@@ -40,7 +40,7 @@ public class DatabaseWriter {
                     .set(CDR.CONTRACT_ID, item.getContractId())
                     .set(CDR.DIAL_A, item.getDialA())
                     .set(CDR.DIAL_B, item.getDialB())
-                    .set(CDR.DURATION, item.getDuration())
+                    .set(CDR.QUANTITY, item.getDuration())
                     .set(CDR.EXTERNAL_FEE_PIASTERS, item.getExternalFeePiasters())
                     .set(CDR.SERVICE_TYPE, item.getServiceType())
                     .set(CDR.START_TIME, item.getStartTime())
