@@ -4,3 +4,5 @@ target/
 # NetBeans specific files
 nbactions.xml
 nbproject/
+
+db.properties
