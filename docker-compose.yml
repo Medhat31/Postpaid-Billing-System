@@ -23,6 +23,8 @@ services:
       # This maps folders on your host machine directly into the container!
       - /opt/billing/cdr:/opt/billing/cdr
       - /opt/billing/archive:/opt/billing/archive
+      
+      - ./db.properties:/app/db.properties
 
   # 3. The Rating Engine
   rating-engine:
@@ -30,6 +32,8 @@ services:
       context: ./Rating_Engine
     depends_on:
       - postgres-db
+    volumes:
+    - ./db.properties:/app/db.properties
 
 volumes:
   pgdata:
