@@ -62,4 +62,5 @@
             </plugin>
         </plugins>
     </build>
+    <name>Rating_Engine</name>
 </project>
