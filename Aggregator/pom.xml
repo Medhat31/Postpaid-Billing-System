@@ -79,7 +79,7 @@
                         <database>
                             <name>org.jooq.meta.postgres.PostgresDatabase</name>
                             <inputSchema>public</inputSchema>
-                            <includes>invoice | invoice_item | contract | users | rateplan | cdr | service_package_balance</includes>
+                            <includes>invoice | invoice_item | contract | users | rateplan | cdr | service_package_balance | invoice_item_type</includes>
                         </database>
                         <target>
                             <packageName>com.telecom.billing.db</packageName>
