@@ -1,7 +1,7 @@
 package com.billing.aggregator;
 
 import com.telecom.billing.db.Tables;
-import com.telecom.billing.db.enums.InvoiceItemType; 
+import com.telecom.billing.db.enums.InvoiceItemType;
 import com.telecom.billing.db.tables.pojos.InvoiceItem;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -14,35 +14,36 @@ import org.jooq.Result;
 import org.jooq.impl.DSL;
 
 /**
- * Repository responsible for executing the monthly billing aggregation.
- * * This class handles the financial logic of gathering base subscription fees 
- * and aggregating out-of-bundle CDR usage. It ensures data integrity by 
- * wrapping the entire calculation, invoice generation, and audit locking 
- * (marking CDRs as billed and resetting unbilled amounts) within a strict 
- * database transaction.
+ * Repository responsible for executing the monthly billing aggregation. * This
+ * class handles the financial logic of gathering base subscription fees and
+ * aggregating out-of-bundle CDR usage. It ensures data integrity by wrapping
+ * the entire calculation, invoice generation, and audit locking (marking CDRs
+ * as billed and resetting unbilled amounts) within a strict database
+ * transaction.
  */
 public class AggregationRepository {
 
     /**
      * Aggregates usage and creates a unified invoice for a specific contract.
      *
-     * @param parentCtx  The active jOOQ DSLContext
+     * @param parentCtx The active jOOQ DSLContext
      * @param contractId The ID of the contract to bill
      * @param cycleStart The start date of the billing cycle
-     * @param cycleEnd   The end date of the billing cycle
-     * @param billDate   The date the bill is generated
-     * @return true if the invoice was successfully created, false if the contract was not found
+     * @param cycleEnd The end date of the billing cycle
+     * @param billDate The date the bill is generated
+     * @return true if the invoice was successfully created, false if the
+     * contract was not found
      */
     public static boolean aggregateAndCreateInvoice(
-            DSLContext parentCtx, 
-            Integer contractId, 
-            LocalDate cycleStart, 
-            LocalDate cycleEnd, 
+            DSLContext parentCtx,
+            Integer contractId,
+            LocalDate cycleStart,
+            LocalDate cycleEnd,
             LocalDate billDate) {
 
         return parentCtx.transactionResult(configuration -> {
             DSLContext ctx = DSL.using(configuration);
-            
+
             List<InvoiceItem> itemsList = new ArrayList<>();
             BigDecimal totalBeforeTax = BigDecimal.ZERO;
             BigDecimal totalOutOfBundle = BigDecimal.ZERO;
@@ -50,7 +51,6 @@ public class AggregationRepository {
             // =====================================================================
             // CONTRACT & BASE PLAN VERIFICATION
             // =====================================================================
-            
             Record contractRecord = ctx
                     .select()
                     .from(Tables.CONTRACT)
@@ -59,24 +59,25 @@ public class AggregationRepository {
                     .fetchOne();
 
             if (contractRecord == null) {
-                return false; 
+                return false;
             }
 
             BigDecimal baseFee = contractRecord.get(Tables.RATEPLAN.MONTHLY_FEE);
-            if (baseFee == null) baseFee = BigDecimal.ZERO;
-            
+            if (baseFee == null) {
+                baseFee = BigDecimal.ZERO;
+            }
+
             totalBeforeTax = totalBeforeTax.add(baseFee);
 
             InvoiceItem baseItem = new InvoiceItem();
             baseItem.setDescription("Base Subscription: " + contractRecord.get(Tables.RATEPLAN.NAME));
             baseItem.setAmount(baseFee);
-            baseItem.setItemType(InvoiceItemType.subscription); 
+            baseItem.setItemType(InvoiceItemType.subscription);
             itemsList.add(baseItem);
 
             // =====================================================================
             // THE CDR AGGREGATION ENGINE
             // =====================================================================
-            
             Result<?> cdrAggregations = ctx
                     .select(Tables.CDR.SERVICE_TYPE, DSL.sum(Tables.CDR.CHARGED_AMOUNT).as("total_extra"))
                     .from(Tables.CDR)
@@ -89,23 +90,34 @@ public class AggregationRepository {
                     .fetch();
 
             for (Record cdrRecord : cdrAggregations) {
-                String serviceType = cdrRecord.get(Tables.CDR.SERVICE_TYPE, String.class);
-                BigDecimal extraCharge = cdrRecord.get("total_extra", BigDecimal.class);
+
+                String serviceTypeCode = String.valueOf(cdrRecord.get(Tables.CDR.SERVICE_TYPE));
+                String readableService = switch (serviceTypeCode) {
+                    case "1" ->
+                        "Voice";
+                    case "2" ->
+                        "SMS";
+                    case "3" ->
+                        "Data";
+                    default ->
+                        "Other (" + serviceTypeCode + ")";
+                };
                 
+                BigDecimal extraCharge = cdrRecord.get("total_extra", BigDecimal.class);
+
                 totalBeforeTax = totalBeforeTax.add(extraCharge);
                 totalOutOfBundle = totalOutOfBundle.add(extraCharge);
 
                 InvoiceItem extraItem = new InvoiceItem();
-                extraItem.setDescription("Out of Bundle Usage: " + serviceType);
+                extraItem.setDescription("Out of Bundle Usage: " + readableService);
                 extraItem.setAmount(extraCharge);
                 extraItem.setItemType(InvoiceItemType.usage);
                 itemsList.add(extraItem);
             }
-            
+
             // =====================================================================
             // TOTAL AFTER TAX CALCULATION & INVOICE CREATION
             // =====================================================================
-
             BigDecimal taxAmount = totalBeforeTax.multiply(new BigDecimal("0.14")).setScale(2, RoundingMode.HALF_UP);
             BigDecimal totalAmount = totalBeforeTax.add(taxAmount);
 
@@ -121,11 +133,10 @@ public class AggregationRepository {
                     .returning(Tables.INVOICE.INVOICE_ID)
                     .fetchOne()
                     .getInvoiceId();
-            
+
             // =====================================================================
             // DATA INSERTION in DB & MARKING CDR AS BILLED 
             // =====================================================================
-
             for (InvoiceItem item : itemsList) {
                 ctx.insertInto(Tables.INVOICE_ITEM)
                         .set(Tables.INVOICE_ITEM.INVOICE_ID, newInvoiceId)
@@ -140,7 +151,7 @@ public class AggregationRepository {
                     .where(Tables.CDR.CONTRACT_ID.eq(contractId))
                     .and(Tables.CDR.START_TIME.between(cycleStart.atStartOfDay(), cycleEnd.atTime(23, 59, 59)))
                     .and(Tables.CDR.IS_RATED.eq(true))
-                    .and(Tables.CDR.IS_BILLED.eq(false)) 
+                    .and(Tables.CDR.IS_BILLED.eq(false))
                     .execute();
 
             ctx.update(Tables.CONTRACT)
@@ -148,7 +159,7 @@ public class AggregationRepository {
                     .where(Tables.CONTRACT.CONTRACT_ID.eq(contractId))
                     .execute();
 
-            return true; 
-        }); 
+            return true;
+        });
     }
 }
