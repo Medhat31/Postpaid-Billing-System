@@ -1,39 +1,32 @@
 version: '3.8'
 
 services:
-  # 1. The Database
-  postgres-db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: billing
-    ports:
-      - "5434:5432" # Allows you to still use pgAdmin/DBeaver from your host machine
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  # 2. The CDR Parser
+  # The CDR Parser
   cdr-parser:
     build:
       context: ./CDR-Parser
-    depends_on:
-      - postgres-db
     volumes:
-      # This maps folders on your host machine directly into the container!
       - /opt/billing/cdr:/opt/billing/cdr
       - /opt/billing/archive:/opt/billing/archive
-      
       - ./db.properties:/app/db.properties
 
-  # 3. The Rating Engine
+  # The Rating Engine
   rating-engine:
     build:
       context: ./Rating_Engine
-    depends_on:
-      - postgres-db
     volumes:
-    - ./db.properties:/app/db.properties
-
-volumes:
-  pgdata:
+      - ./db.properties:/app/db.properties
+    
+  # Aggregator & Reporter 
+  
+  billing-scheduler:
+    build: 
+      context: ./scheduler
+    container_name: billing_scheduler
+    volumes:
+      - ./Aggregator/target/AggregationEngine-1.0-SNAPSHOT-jar-with-dependencies.jar:/app/Aggregator.jar
+      - ./BillReporter/target/BillReporter-1.0-SNAPSHOT.jar:/app/BillReporter.jar
+      - ./BillReporter/io.properties:/app/io.properties
+      - ./db.properties:/app/db.properties 
+      - /opt/billing/bills:/opt/billing/bills
+    restart: always

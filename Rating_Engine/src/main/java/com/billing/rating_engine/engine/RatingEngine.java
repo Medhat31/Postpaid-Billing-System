@@ -29,7 +29,7 @@ public class RatingEngine implements IRatingEngine {
         try {
             
             DSLContext ctx = DatabaseConfig.getDSLContext();
-            Result<Record> unratedCdrs = cdrRepo.fetchUnratedCdrs(ctx, 100); 
+            Result<Record> unratedCdrs = cdrRepo.fetchUnratedCdrs(ctx, 1000); 
 
             if (unratedCdrs.isEmpty()) {
                 return;

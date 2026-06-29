@@ -13,8 +13,8 @@ public class PollingScheduler {
     }
 
     public void start() {
-        // Executes the rating cycle every 5 seconds
-        scheduler.scheduleAtFixedRate(ratingEngine::startRatingCycle, 0, 5, TimeUnit.SECONDS);
+        // Executes the rating cycle every 2 seconds
+        scheduler.scheduleAtFixedRate(ratingEngine::startRatingCycle, 0, 2, TimeUnit.SECONDS);
     }
 
     public void stop() {

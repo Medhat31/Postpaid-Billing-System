@@ -12,7 +12,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
-        <exec.mainClass>com.billing.aggregator.AggregationEngine</exec.mainClass>
+        <exec.mainClass>com.billing.aggregator.Aggregator</exec.mainClass>
     </properties>
 
     <repositories>
