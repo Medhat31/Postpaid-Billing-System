@@ -2,9 +2,12 @@ package com.billing.rating_engine.processor;
 
 import com.billing.rating_engine.repository.ICdrRepository;
 import com.billing.rating_engine.repository.IWalletRepository;
+import java.math.BigDecimal;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import java.time.LocalDateTime;
+import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.table;
 
 public class DataProcessor implements ICdrProcessor {
     private final IWalletRepository walletRepo;
@@ -52,5 +55,12 @@ public class DataProcessor implements ICdrProcessor {
 
         chargedAmount += externalFeeEgp;
         cdrRepo.updateCdrAfterRating(ctx, cdrId, chargedAmount);
-    }
+        
+          if (chargedAmount > 0.0) {
+            ctx.update(table("contract"))
+                    .set(field("unbilled_amount"), field("unbilled_amount", BigDecimal.class).add(chargedAmount))
+                    .where(field("contract_id").eq(contractId))
+                    .execute();
+        }    
+    } 
 }

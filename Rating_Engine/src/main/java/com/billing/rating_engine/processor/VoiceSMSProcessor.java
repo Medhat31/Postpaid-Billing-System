@@ -2,12 +2,15 @@ package com.billing.rating_engine.processor;
 
 import com.billing.rating_engine.repository.ICdrRepository;
 import com.billing.rating_engine.repository.IWalletRepository;
+import java.math.BigDecimal;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import java.time.LocalDateTime;
+import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.table;
 
 public class VoiceSMSProcessor implements ICdrProcessor {
-    
+
     private final IWalletRepository walletRepo;
     private final ICdrRepository cdrRepo;
 
@@ -15,13 +18,13 @@ public class VoiceSMSProcessor implements ICdrProcessor {
         this.walletRepo = walletRepo;
         this.cdrRepo = cdrRepo;
     }
-    
+
     private double calculateZoneRate(String dialA, String dialB, double baseRate) {
-        
+
         if (dialA == null || dialB == null || dialA.length() < 4 || dialB.length() < 4) {
             return baseRate * 1.5; // Default to Off-Net for weird/short numbers
         }
-        
+
         String prefixA = dialA.substring(0, 4);
         String prefixB = dialB.substring(0, 4);
 
@@ -34,7 +37,7 @@ public class VoiceSMSProcessor implements ICdrProcessor {
 
     @Override
     public void process(DSLContext ctx, Record cdr) {
-       long cdrId = cdr.get("cdr_id", Long.class);
+        long cdrId = cdr.get("cdr_id", Long.class);
         int contractId = cdr.get("contract_id", Integer.class);
         short serviceType = cdr.get("service_type", Short.class);
         double quantity = cdr.get("quantity", Double.class);
@@ -68,9 +71,17 @@ public class VoiceSMSProcessor implements ICdrProcessor {
             // Out-of-Quota: No active wallet, charge pure cash
             chargedAmount = quantity * finalRate;
         }
-        
+
         chargedAmount += externalFeeEgp;
         cdrRepo.updateCdrAfterRating(ctx, cdrId, chargedAmount);
+
+        if (chargedAmount > 0.0) {
+            ctx.update(table("contract"))
+                    .set(field("unbilled_amount"), field("unbilled_amount", BigDecimal.class).add(chargedAmount))
+                    .where(field("contract_id").eq(contractId))
+                    .execute();
+        }
+
     }
-    
+
 }
